@@ -6,8 +6,9 @@ import (
 	"log"
 	"math/rand/v2"
 	"net/http"
-	"strconv"
 	"os"
+	"os/exec"
+	"strconv"
 	"time"
 	// "io/ioutil"
 )
@@ -20,17 +21,17 @@ type JobRequest struct {
 }
 
 type JobResult struct {
-	Data       string `json:"data"`
-	Id         string `json:"id"`
-	ElapsedSec int    `json:"elapsed_sec"`
-	Status     int    `json:"status"`
-	Message    int    `json:"message"`
+	Data       []byte  `json:"data"`
+	Wid        int     `json:"worker_id"`
+	ElapsedSec float64 `json:"elapsed_sec"`
+	Status     int     `json:"status"`
+	Message    string  `json:"message"`
 }
 
+// job payload includes the input request, and a channel to wait for the worker to write the result to
 type JobPayload struct {
-	Request             JobRequest
-	Result             JobResult
-	JobReady            chan []byte
+	Request  JobRequest
+	JobReady chan JobResult
 }
 
 var (
@@ -39,25 +40,43 @@ var (
 	HttpListenPort    = 8080
 )
 
-func DoWork(id int) []byte {
+func DoWork(id int) ([]byte, int, string) {
 	fmt.Printf("DoWork %v: working\n", id)
-	time.Sleep(time.Duration(2000+rand.IntN(5000)) * time.Millisecond)
+	time.Sleep(time.Duration(1000+rand.IntN(1000)) * time.Millisecond)
 	rnd := rand.IntN(100)
-	fmt.Printf("DoWork %v: work done, value returned: %d\n", id, rnd)
 
-    dat, _ := os.ReadFile("nomis_in.xml")
-	return dat
+	dat, _ := os.ReadFile("nomis_in.xml")
+	fmt.Printf("DoWork %v: work done, value returned: %d, dat_len:%d\n", id, rnd, len(dat))
+	return dat, 0, "ok"
 }
 
-func worker(id int, jobs chan JobPayload) {
+func worker(wid int, jobs chan JobPayload) {
+    jr_cmd:= os.Getenv("JR_CMD")
+    fmt.Println("worker: JR_CMD:", jr_cmd)
+    cmd := exec.Command(jr_cmd)
+    cmd.Env = os.Environ()
+    cmd.Env = append(cmd.Env, "JR_WID="+strconv.Itoa(wid))
+
 	for {
 		jpl := <-jobs
-
 		fmt.Printf("worker: JobPayload: %+v\n", jpl)
-		result := DoWork(id)
 
-		fmt.Println("worker:", id, "returning to JobReady channel, length: ", len(result))
-		jpl.JobReady <- result // return result to payload handler
+		start := time.Now()
+
+        stdoutStderr, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("worker: cmd returned: ", stdoutStderr)
+
+		result_data, result_status, result_message := DoWork(wid)
+
+		elapsed := time.Since(start)
+
+		jres := JobResult{Data: result_data, Status: result_status, Message: result_message, ElapsedSec: elapsed.Seconds(), Wid: wid}
+
+		fmt.Println("worker:", wid, "returning to JobReady channel, length: ", len(result_data))
+		jpl.JobReady <- jres // return result to payload handler
 	}
 }
 
@@ -83,7 +102,7 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 		//payload is valid even if json keys were missing
 		log.Println("payloadHandler: a valid json POST request received:", jobreq)
 
-        // some json validation
+		// some json validation
 		if len(jobreq.Id) == 0 || len(jobreq.Size) == 0 || len(jobreq.Data) == 0 {
 			log.Println("Json keys missing")
 			w.WriteHeader(http.StatusBadRequest)
@@ -98,19 +117,24 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 			return
 		}
 
-        //data seems valid
-		jp := JobPayload{Request: jobreq, JobReady: make(chan []byte)}
+		//data seems valid
+		jp := JobPayload{Request: jobreq, JobReady: make(chan JobResult)}
 
 		fmt.Printf("payloadHandler: sending job %v to jobs channel\n", jobid)
-		jobs <- jp 
 
-		fmt.Printf("payloadHandler: Waiting for result on JobReady[%v]\n",jobid)
+		//send to worker
+		jobs <- jp
 
+		fmt.Printf("payloadHandler: waiting for result on JobReady[%v]\n", jobid)
+
+		//wait for worker
 		jr := <-jp.JobReady
 
-		fmt.Println("payloadHandler: received JobReady from worker, length:", len(string(jr[:])))
+		jr_j, err := json.Marshal(jr)
+
+		fmt.Println("payloadHandler: received JobReady from worker, length:", len(string(jr_j[:])))
 		w.WriteHeader(http.StatusOK)
-        w.Write(jr[:])
+		w.Write(jr_j)
 	}
 }
 
@@ -134,7 +158,7 @@ func main() {
 	}()
 
 	for {
-        time.Sleep(time.Duration(2000) * time.Millisecond)
+		time.Sleep(time.Duration(2000) * time.Millisecond)
 	}
 
 }
