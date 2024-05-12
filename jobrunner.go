@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand/v2"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
 	"time"
+	"bytes"
 	// "io/ioutil"
 )
 
@@ -24,8 +24,8 @@ type JobResult struct {
 	Data       []byte  `json:"data"`
 	Wid        int     `json:"worker_id"`
 	ElapsedSec float64 `json:"elapsed_sec"`
-	Status     int     `json:"status"`
-	Message    string  `json:"message"`
+	ExitStatus     int     `json:"exit_status"`
+	Message    []byte  `json:"message"`
 }
 
 // job payload includes the input request, and a channel to wait for the worker to write the result to
@@ -40,14 +40,33 @@ var (
 	HttpListenPort    = 8080
 )
 
-func DoWork(id int) ([]byte, int, string) {
-	fmt.Printf("DoWork %v: working\n", id)
-	time.Sleep(time.Duration(1000+rand.IntN(1000)) * time.Millisecond)
-	rnd := rand.IntN(100)
+func exitCode(err error) int {
+    if e, ok := err.(interface{ExitCode() int}); ok {
+        return e.ExitCode()
+    }
+    return 0
+}
 
-	dat, _ := os.ReadFile("nomis_in.xml")
-	fmt.Printf("DoWork %v: work done, value returned: %d, dat_len:%d\n", id, rnd, len(dat))
-	return dat, 0, "ok"
+func DoWork(id int, cmd *exec.Cmd) ([]byte, int, []byte) {
+	fmt.Printf("DoWork %v: working\n", id)
+
+    var outb, errb bytes.Buffer 
+    cmd.Stdout = &outb
+    cmd.Stderr = &errb
+    err := cmd.Run()
+
+    fmt.Println("out:", outb.String(), "err:", errb.String())
+    exitStatus := exitCode(err)
+
+    data := outb.Bytes()
+    cmdErr := errb.Bytes()
+
+    fmt.Println("worker: cmd returned: ", data)
+	fmt.Printf("DoWork %v: work done, data length:%d\n", id, len(data))
+
+
+	return data, exitStatus, cmdErr
+
 }
 
 func worker(wid int, jobs chan JobPayload) {
@@ -62,18 +81,10 @@ func worker(wid int, jobs chan JobPayload) {
 		fmt.Printf("worker: JobPayload: %+v\n", jpl)
 
 		start := time.Now()
-
-        stdoutStderr, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println("worker: cmd returned: ", stdoutStderr)
-
-		result_data, result_status, result_message := DoWork(wid)
-
+		result_data, result_status, result_message := DoWork(wid,cmd)
 		elapsed := time.Since(start)
 
-		jres := JobResult{Data: result_data, Status: result_status, Message: result_message, ElapsedSec: elapsed.Seconds(), Wid: wid}
+		jres := JobResult{Data: result_data, ExitStatus: result_status, Message: result_message, ElapsedSec: elapsed.Seconds(), Wid: wid}
 
 		fmt.Println("worker:", wid, "returning to JobReady channel, length: ", len(result_data))
 		jpl.JobReady <- jres // return result to payload handler
@@ -130,11 +141,13 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 		//wait for worker
 		jr := <-jp.JobReady
 
+        //send the result to client
 		jr_j, err := json.Marshal(jr)
 
-		fmt.Println("payloadHandler: received JobReady from worker, length:", len(string(jr_j[:])))
+		fmt.Println("payloadHandler: returning to client JobReady received from worker, length:", len(string(jr_j[:])))
 		w.WriteHeader(http.StatusOK)
 		w.Write(jr_j)
+        fmt.Fprintf(w,"\n")
 	}
 }
 
