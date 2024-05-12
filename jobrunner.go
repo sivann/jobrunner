@@ -28,6 +28,9 @@ type JobResult struct {
 	Message    []byte  `json:"message"`
 }
 
+type StatusResponse struct {
+	NJobs int `json:"queued_jobs"`
+}
 // job payload includes the input request, and a channel to wait for the worker to write the result to
 type JobPayload struct {
 	Request  JobRequest
@@ -36,6 +39,7 @@ type JobPayload struct {
 
 var (
 	NumWorkers        = 3 //os.Getenv("NUM_WORKERS")
+    JobQueueCap          = NumWorkers*10
 	HttpListenAddress = "127.0.0.1"
 	HttpListenPort    = 8080
 )
@@ -47,39 +51,42 @@ func exitCode(err error) int {
     return 0
 }
 
-func DoWork(id int, cmd *exec.Cmd) ([]byte, int, []byte) {
-	fmt.Printf("DoWork %v: working\n", id)
+func ExecuteCommand(wid int, cmd1 *exec.Cmd) ([]byte, int, []byte) {
+    jr_cmd:= os.Getenv("JOBRUNNER_CMD")
+    fmt.Println("worker: JOBRUNNE_CMD:", jr_cmd)
+
+    cmd := exec.Command(jr_cmd)
+    cmd.Env = os.Environ()
+    cmd.Env = append(cmd.Env, "JOBRUNNER_WORKER_ID="+strconv.Itoa(wid))
+
+
+	fmt.Printf("ExecuteCommand %v: executin: '%v'\n", wid, jr_cmd)
 
     var outb, errb bytes.Buffer 
     cmd.Stdout = &outb
     cmd.Stderr = &errb
     err := cmd.Run()
 
-    fmt.Println("out:", outb.String(), "err:", errb.String())
+    //fmt.Println("out:", outb.String(), "err:", errb.String())
     exitStatus := exitCode(err)
 
     data := outb.Bytes()
     cmdErr := errb.Bytes()
 
-    fmt.Println("worker: cmd returned: ", data)
-	fmt.Printf("DoWork %v: work done, data length:%d\n", id, len(data))
+    fmt.Println("worker: cmd stdout length: ", len(data))
+	fmt.Printf("ExecuteCommand %v: work done, data length:%d\n", wid, len(data))
 
 	return data, exitStatus, cmdErr
 }
 
 func worker(wid int, jobs chan JobPayload) {
-    jr_cmd:= os.Getenv("JR_CMD")
-    fmt.Println("worker: JR_CMD:", jr_cmd)
-    cmd := exec.Command(jr_cmd)
-    cmd.Env = os.Environ()
-    cmd.Env = append(cmd.Env, "JR_WID="+strconv.Itoa(wid))
-
+    cmd := exec.Command("ls")
 	for {
 		jpl := <-jobs
 		fmt.Printf("worker: JobPayload: %+v\n", jpl)
 
 		start := time.Now()
-		result_data, result_status, result_message := DoWork(wid,cmd)
+		result_data, result_status, result_message := ExecuteCommand(wid, cmd)
 		elapsed := time.Since(start)
 
 		jres := JobResult{Data: result_data, ExitStatus: result_status, Message: result_message, ElapsedSec: elapsed.Seconds(), Wid: wid}
@@ -126,6 +133,14 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 			return
 		}
 
+
+        if len(jobs) >= JobQueueCap {
+            fmt.Printf("payloadHandler: denying request for job %d, job queue too large\n",jobid) 
+            w.WriteHeader(http.StatusServiceUnavailable)
+            fmt.Fprintf(w,"job queue too large (%d)\n",len(jobs))
+            return
+        }
+
 		//data seems valid
 		jp := JobPayload{Request: jobreq, JobReady: make(chan JobResult)}
 
@@ -143,15 +158,26 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 		jr_j, err := json.Marshal(jr)
 
 		fmt.Println("payloadHandler: returning to client JobReady received from worker, length:", len(string(jr_j[:])))
+        w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(jr_j)
         fmt.Fprintf(w,"\n")
 	}
 }
+func statusHandler(jobs chan JobPayload) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+        sr := StatusResponse {NJobs: len(jobs)}
+        sr_j, _ := json.Marshal(sr)
 
+        w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+        w.Write(sr_j)
+        fmt.Fprintf(w,"\n")
+    }
+}
+	
 func main() {
-    var qlen int, jobprocessing 
-	jobs := make(chan JobPayload, NumWorkers*3)
+	jobs := make(chan JobPayload, JobQueueCap)
 
 	//start worker
 	for w := 1; w <= NumWorkers; w++ {
@@ -160,7 +186,8 @@ func main() {
 	}
 
 	go func() {
-		http.HandleFunc("/payload/", payloadHandler(jobs))
+		http.HandleFunc("/payload", payloadHandler(jobs))
+		http.HandleFunc("/status", statusHandler(jobs))
 		err := http.ListenAndServe(HttpListenAddress+":"+strconv.Itoa(HttpListenPort), nil)
 		if err != nil {
 			log.Println("Starting listening for payload messages on port:", HttpListenPort)
@@ -170,7 +197,7 @@ func main() {
 	}()
 
 	for {
-		time.Sleep(time.Duration(2000) * time.Millisecond)
+		time.Sleep(time.Duration(5000) * time.Millisecond)
         log.Println("main: job queue length: ",len(jobs))
 	}
 
