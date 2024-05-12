@@ -64,9 +64,7 @@ func DoWork(id int, cmd *exec.Cmd) ([]byte, int, []byte) {
     fmt.Println("worker: cmd returned: ", data)
 	fmt.Printf("DoWork %v: work done, data length:%d\n", id, len(data))
 
-
 	return data, exitStatus, cmdErr
-
 }
 
 func worker(wid int, jobs chan JobPayload) {
@@ -152,7 +150,8 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 }
 
 func main() {
-	jobs := make(chan JobPayload)
+    var qlen int, jobprocessing 
+	jobs := make(chan JobPayload, NumWorkers*3)
 
 	//start worker
 	for w := 1; w <= NumWorkers; w++ {
@@ -172,6 +171,7 @@ func main() {
 
 	for {
 		time.Sleep(time.Duration(2000) * time.Millisecond)
+        log.Println("main: job queue length: ",len(jobs))
 	}
 
 }
