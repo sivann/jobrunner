@@ -1,6 +1,9 @@
+/* sivann 2024 */
+
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,7 +12,9 @@ import (
 	"os/exec"
 	"strconv"
 	"time"
-	"bytes"
+    "log/slog"
+    "sync/atomic"
+
 	// "io/ioutil"
 )
 
@@ -24,13 +29,15 @@ type JobResult struct {
 	Data       []byte  `json:"data"`
 	Wid        int     `json:"worker_id"`
 	ElapsedSec float64 `json:"elapsed_sec"`
-	ExitStatus     int     `json:"exit_status"`
+	ExitStatus int     `json:"exit_status"`
 	Message    []byte  `json:"message"`
 }
 
 type StatusResponse struct {
-	NJobs int `json:"queued_jobs"`
+	QueuedJobs int `json:"queued_jobs"`
+	TotalJobs uint64 `json:"total_jobs"`
 }
+
 // job payload includes the input request, and a channel to wait for the worker to write the result to
 type JobPayload struct {
 	Request  JobRequest
@@ -38,52 +45,56 @@ type JobPayload struct {
 }
 
 var (
-	NumWorkers        = 3 //os.Getenv("NUM_WORKERS")
-    JobQueueCap          = NumWorkers*10
+	NumWorkers        = 3 //os.Getenv("JOBRUNNER_NUM_WORKERS")
+	JobQueueCap       = NumWorkers * 10
 	HttpListenAddress = "127.0.0.1"
 	HttpListenPort    = 8080
+    TotalJobs         = uint64(0)
 )
 
 func exitCode(err error) int {
-    if e, ok := err.(interface{ExitCode() int}); ok {
-        return e.ExitCode()
-    }
-    return 0
+	if e, ok := err.(interface{ ExitCode() int }); ok {
+		return e.ExitCode()
+	}
+	return 0
+}
+
+func Infof(format string, args ...any) {
+    slog.Default().Info(fmt.Sprintf(format, args...))
 }
 
 func ExecuteCommand(wid int, cmd1 *exec.Cmd) ([]byte, int, []byte) {
-    jr_cmd:= os.Getenv("JOBRUNNER_CMD")
-    fmt.Println("worker: JOBRUNNE_CMD:", jr_cmd)
+	jr_cmd := os.Getenv("JOBRUNNER_CMD")
+	slog.Info("worker","JOBRUNNE_CMD", jr_cmd)
 
-    cmd := exec.Command(jr_cmd)
-    cmd.Env = os.Environ()
-    cmd.Env = append(cmd.Env, "JOBRUNNER_WORKER_ID="+strconv.Itoa(wid))
+	cmd := exec.Command(jr_cmd)
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "JOBRUNNER_WORKER_ID="+strconv.Itoa(wid))
 
+	slog.Info("ExecuteCommand","workerId",wid, "command",jr_cmd)
 
-	fmt.Printf("ExecuteCommand %v: executin: '%v'\n", wid, jr_cmd)
+	var outb, errb bytes.Buffer
+	cmd.Stdout = &outb
+	cmd.Stderr = &errb
+	err := cmd.Run()
 
-    var outb, errb bytes.Buffer 
-    cmd.Stdout = &outb
-    cmd.Stderr = &errb
-    err := cmd.Run()
+	//slog.Info("out:", outb.String(), "err:", errb.String())
+	exitStatus := exitCode(err)
 
-    //fmt.Println("out:", outb.String(), "err:", errb.String())
-    exitStatus := exitCode(err)
+	data := outb.Bytes()
+	cmdErr := errb.Bytes()
 
-    data := outb.Bytes()
-    cmdErr := errb.Bytes()
-
-    fmt.Println("worker: cmd stdout length: ", len(data))
-	fmt.Printf("ExecuteCommand %v: work done, data length:%d\n", wid, len(data))
+	Infof("ExecuteCommand %v: work done, data length:%d\n", wid, len(data))
 
 	return data, exitStatus, cmdErr
 }
 
 func worker(wid int, jobs chan JobPayload) {
-    cmd := exec.Command("ls")
+	cmd := exec.Command("ls")
 	for {
 		jpl := <-jobs
-		fmt.Printf("worker: JobPayload: %+v\n", jpl)
+		slog.Info("worker: received job","JobPayload",jpl)
+        atomic.AddUint64(&TotalJobs,1)
 
 		start := time.Now()
 		result_data, result_status, result_message := ExecuteCommand(wid, cmd)
@@ -91,7 +102,7 @@ func worker(wid int, jobs chan JobPayload) {
 
 		jres := JobResult{Data: result_data, ExitStatus: result_status, Message: result_message, ElapsedSec: elapsed.Seconds(), Wid: wid}
 
-		fmt.Println("worker:", wid, "returning to JobReady channel, length: ", len(result_data))
+		slog.Info("worker returning data to Jobready channel.","wid", wid, "result_length",len(result_data))
 		jpl.JobReady <- jres // return result to payload handler
 	}
 }
@@ -133,55 +144,73 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 			return
 		}
 
-
-        if len(jobs) >= JobQueueCap {
-            fmt.Printf("payloadHandler: denying request for job %d, job queue too large\n",jobid) 
-            w.WriteHeader(http.StatusServiceUnavailable)
-            fmt.Fprintf(w,"job queue too large (%d)\n",len(jobs))
-            return
-        }
+		if len(jobs) >= JobQueueCap {
+			Infof("payloadHandler: denying request for job %d, job queue too large\n", jobid)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, "job queue too large (%d)\n", len(jobs))
+			return
+		}
 
 		//data seems valid
 		jp := JobPayload{Request: jobreq, JobReady: make(chan JobResult)}
 
-		fmt.Printf("payloadHandler: sending job %v to jobs channel\n", jobid)
+		Infof("payloadHandler: sending job %v to jobs channel\n", jobid)
 
 		//send to worker
 		jobs <- jp
 
-		fmt.Printf("payloadHandler: waiting for result on JobReady[%v]\n", jobid)
+		Infof("payloadHandler: waiting for result on JobReady[%v]\n", jobid)
 
 		//wait for worker
 		jr := <-jp.JobReady
 
-        //send the result to client
+		//send the result to client
 		jr_j, err := json.Marshal(jr)
 
-		fmt.Println("payloadHandler: returning to client JobReady received from worker, length:", len(string(jr_j[:])))
-        w.Header().Set("Content-Type", "application/json")
+		Infof("payloadHandler: returning to client JobReady received from worker, length:", len(string(jr_j[:])))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(jr_j)
-        fmt.Fprintf(w,"\n")
+		fmt.Fprintf(w, "\n")
 	}
 }
 func statusHandler(jobs chan JobPayload) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-        sr := StatusResponse {NJobs: len(jobs)}
-        sr_j, _ := json.Marshal(sr)
+		sr := StatusResponse{QueuedJobs: len(jobs), TotalJobs: TotalJobs}
+		sr_j, _ := json.Marshal(sr)
 
-        w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-        w.Write(sr_j)
-        fmt.Fprintf(w,"\n")
-    }
+		w.Write(sr_j)
+		fmt.Fprintf(w, "\n")
+	}
 }
-	
+
 func main() {
 	jobs := make(chan JobPayload, JobQueueCap)
 
+    jnw, err := strconv.Atoi(os.Getenv("JOBRUNNER_NUM_WORKERS"))
+    if err == nil {
+        NumWorkers = jnw
+		slog.Info("main: setting NumWorkers from JOBRUNNER_NUM_WORKERS env variable." ,"NumWorkers",NumWorkers)
+    }
+
+    //validate JOBRUNNER_CMD
+    jc := os.Getenv("JOBRUNNER_CMD")
+    if len(jc) == 0 {
+        fmt.Fprintf(os.Stderr, "JOBRUNNER_CMD is empty\n")
+        os.Exit(1)
+    }
+    path, err := exec.LookPath(jc)
+	if err != nil {
+		log.Fatal("Cannot find command specified in JOBRUNNER_CMD env var:", jc)
+	}
+	Infof("Path for JOBRUNNER_CMD: %s\n", path)
+
+
 	//start worker
 	for w := 1; w <= NumWorkers; w++ {
-		fmt.Println("main: starting worker ", w)
+		slog.Info("main: starting worker", "workerID", w)
 		go worker(w, jobs)
 	}
 
@@ -196,9 +225,10 @@ func main() {
 		}
 	}()
 
+    //loop and log queue length
 	for {
-		time.Sleep(time.Duration(5000) * time.Millisecond)
-        log.Println("main: job queue length: ",len(jobs))
+		time.Sleep(time.Duration(15000) * time.Millisecond)
+		slog.Info("main loop", "queue_length", len(jobs))
 	}
 
 }
