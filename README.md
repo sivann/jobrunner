@@ -15,5 +15,6 @@ Start a limited pool of workers, which accept jobs over HTTP, execute a command,
 
 * /payload: where to send cmd input
 * /status: service status (e.g. jobs waiting)
+* /metrics: prometheus metrics
 
 If number of jobs waiting in queue > JOBRUNNER_NUM_WORKERS * 10, the service returns 503 immediately.
