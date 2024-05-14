@@ -18,3 +18,7 @@ Start a limited pool of workers, which accept jobs over HTTP, execute a command,
 * /metrics: prometheus metrics
 
 If number of jobs waiting in queue > JOBRUNNER_NUM_WORKERS * 10, the service returns 503 immediately.
+
+## Compilation
+
+go build

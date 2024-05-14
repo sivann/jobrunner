@@ -20,10 +20,9 @@ import (
 )
 
 type JobRequest struct {
-	Data   string `json:"data"`
+	Data   []byte `json:"data"`
 	Size   string `json:"size"`
 	Id     string `json:"id"`
-	UserId string `json:"user_id"`
 }
 
 type JobResult struct {
@@ -58,6 +57,7 @@ var (
 	HttpListenPort    = 8080
 	TotalJobs         = uint64(0)
 )
+
 
 func exitCode(err error) int {
 	if e, ok := err.(interface{ ExitCode() int }); ok {
@@ -97,20 +97,45 @@ func PrometheusMetrics(reg prometheus.Registerer) *metrics {
 	return m
 }
 
-func ExecuteCommand(wid int, cmd1 *exec.Cmd) ([]byte, int, []byte) {
+func ExecuteCommand(wid int, request JobRequest) ([]byte, int, []byte) {
+	var outb, errb bytes.Buffer
+
+	wid_s := strconv.Itoa(wid)
 	jr_cmd := os.Getenv("JOBRUNNER_CMD")
 	slog.Info("worker", "JOBRUNNE_CMD", jr_cmd)
 
+	slog.Info("ExecuteCommand", "workerId", wid, "command", jr_cmd)
+
+    //create input file
+	fnprefix := fmt.Sprintf("jobdata_w_%s_id_%s_",wid_s,request.Id)
+	f, err := os.CreateTemp("", fnprefix)
+	if err != nil {
+		slog.Error("ExecuteCommand: failed to create temp file", "error", err)
+		return []byte{}, -1, []byte(err.Error())
+	}
+	slog.Info("ExecuteCommand, created temp file", "worker", wid_s, "filename", f.Name(), "request.Id", request.Id, "size",request.Size)
+	defer os.Remove(f.Name()) // clean up
+
+	err = os.WriteFile(f.Name(), request.Data,  0666)
+	if err != nil {
+		slog.Error("ExecuteCommand: failed to write temp file", "error", err)
+		return []byte{}, -1, []byte(err.Error())
+	}
+
+	//prepare cmd
 	cmd := exec.Command(jr_cmd)
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "JOBRUNNER_WORKER_ID="+strconv.Itoa(wid))
-
-	slog.Info("ExecuteCommand", "workerId", wid, "command", jr_cmd)
-
-	var outb, errb bytes.Buffer
+	cmd.Env = append(cmd.Env, "JOBRUNNER_DATA_FN="+f.Name())
 	cmd.Stdout = &outb
 	cmd.Stderr = &errb
-	err := cmd.Run()
+
+	err = cmd.Run()
+	if err != nil {
+		slog.Error("ExecuteCommand: ignoring cmd.Run() error.", "error", err)
+		//return []byte{}, -1, []byte(err.Error())
+	}
+
 
 	//slog.Info("out:", outb.String(), "err:", errb.String())
 	exitStatus := exitCode(err)
@@ -124,14 +149,13 @@ func ExecuteCommand(wid int, cmd1 *exec.Cmd) ([]byte, int, []byte) {
 }
 
 func worker(wid int, jobs chan JobPayload, m metrics) {
-	cmd := exec.Command("ls")
 	for {
 		jpl := <-jobs
 		slog.Info("worker: received job", "JobPayload", jpl)
 		atomic.AddUint64(&TotalJobs, 1)
 
 		start := time.Now()
-		result_data, result_status, result_message := ExecuteCommand(wid, cmd)
+		result_data, result_status, result_message := ExecuteCommand(wid, jpl.Request)
 		elapsed := time.Since(start)
 		m.JobDuration.WithLabelValues(strconv.Itoa(wid)).Observe(float64(elapsed))
 		m.TotalJobs.WithLabelValues(strconv.Itoa(wid)).Inc()
@@ -203,7 +227,7 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 		//send the result to client
 		jr_j, err := json.Marshal(jr)
 
-		Infof("payloadHandler: returning to client JobReady received from worker, length:", len(string(jr_j[:])))
+		Infof("payloadHandler: returning to client JobReady received from worker, length: %v", len(string(jr_j[:])))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(jr_j)
