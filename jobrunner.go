@@ -21,7 +21,6 @@ import (
 
 type JobRequest struct {
 	Data   []byte `json:"data"`
-	Size   string `json:"size"`
 	Id     string `json:"id"`
 }
 
@@ -113,7 +112,7 @@ func ExecuteCommand(wid int, request JobRequest) ([]byte, int, []byte) {
 		slog.Error("ExecuteCommand: failed to create temp file", "error", err)
 		return []byte{}, -1, []byte(err.Error())
 	}
-	slog.Info("ExecuteCommand, created temp file", "worker", wid_s, "filename", f.Name(), "request.Id", request.Id, "size",request.Size)
+	slog.Info("ExecuteCommand, created temp file", "worker", wid_s, "filename", f.Name(), "request.Id", request.Id)
 	defer os.Remove(f.Name()) // clean up
 
 	err = os.WriteFile(f.Name(), request.Data,  0666)
@@ -126,7 +125,8 @@ func ExecuteCommand(wid int, request JobRequest) ([]byte, int, []byte) {
 	cmd := exec.Command(jr_cmd)
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "JOBRUNNER_WORKER_ID="+strconv.Itoa(wid))
-	cmd.Env = append(cmd.Env, "JOBRUNNER_DATA_FN="+f.Name())
+	cmd.Env = append(cmd.Env, "JOBRUNNER_REQUEST_DATA_FN="+f.Name())
+	cmd.Env = append(cmd.Env, "JOBRUNNER_REQUEST_ID="+request.Id)
 	cmd.Stdout = &outb
 	cmd.Stderr = &errb
 
@@ -190,7 +190,7 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 		log.Println("payloadHandler: a valid json POST request received:", jobreq)
 
 		// some json validation
-		if len(jobreq.Id) == 0 || len(jobreq.Size) == 0 || len(jobreq.Data) == 0 {
+		if len(jobreq.Id) == 0 || len(jobreq.Data) == 0 {
 			log.Println("Json keys missing")
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte("Json keys missing\n"))
@@ -272,7 +272,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Cannot find command specified in JOBRUNNER_CMD env var:", jc)
 	}
-	Infof("Path for JOBRUNNER_CMD: %s\n", path)
+	Infof("path for JOBRUNNER_CMD: %s\n", path)
 
 	//start worker
 	for w := 1; w <= NumWorkers; w++ {
