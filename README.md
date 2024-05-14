@@ -37,3 +37,20 @@ Where:
 * data: base64 encoded input data, available to $JOBRUNNER_CMD as $JOBRUNNER_REQUEST_DATA_FN file
 * id: an ID of your choosing, not used by jobrunner itself. Available as JOBRUNNER_REQUEST_ID env var
 
+
+Response:
+
+```
+{
+  "data": "aGVyZQotcnctLS0tLS0tICAxIHNpdmFubiAgMTgwMDMzMzU5MiAgOSAxNCBNYXkgMTY6MTIgdG1wL2pvYmRhdGFfd18xX2lkXzEyMzVfMzU4MzI0MjkyMQotcnctLS0tLS0tICAxIHNpdmFubiAgMTgwMDMzMzU5MiAgOSAxNCBNYXkgMTE6NTYgdG1wL2pvYmRhdGFfd18yX2lkXzEyMzVfMTAzOTE5MzI1OAo=",
+  "worker_id": 1,
+  "elapsed_sec": 3.146105833,
+  "exit_status": 0,
+  "message": "bGFsYQo="
+}
+```
+
+* data: base64 encoded result
+* worker_id: worker that processed the request
+* exit_status: $JOBRUNNER_CMD exit status
+* message: error message by worker or $JOBRUNNER_CMD
