@@ -29,7 +29,8 @@ go build
 ## Sending a request
 
 ```
-curl   -iL --post302 --post301  -X POST  -H "Content-Type: application/json"  localhost:8080/payload --data '{"data":"a29rbzEyMzQK", "id":"1235"}'
+curl   -iL --post302 --post301  -X POST  -H "Content-Type: application/json"  localhost:8080/payload \
+  --data '{"data":"a29rbzEyMzQK", "id":"1235"}'
 ```
 
 Where:
