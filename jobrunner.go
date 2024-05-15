@@ -29,7 +29,8 @@ type JobResult struct {
 	Wid        int     `json:"worker_id"`
 	ElapsedSec float64 `json:"elapsed_sec"`
 	ExitStatus int     `json:"exit_status"`
-	Message    []byte  `json:"message"`
+	Output     []byte  `json:"output"`
+	Error      []byte  `json:"error"`
 }
 
 type StatusResponse struct {
@@ -53,7 +54,7 @@ var (
 	NumWorkers        = 3 //os.Getenv("JOBRUNNER_NUM_WORKERS")
 	JobQueueCap       = NumWorkers * 10
 	HttpListenAddress = "127.0.0.1"
-	HttpListenPort    = 8080
+	HttpListenPort    = "8080"
 	TotalJobs         = uint64(0)
 )
 
@@ -96,36 +97,47 @@ func PrometheusMetrics(reg prometheus.Registerer) *metrics {
 	return m
 }
 
-func ExecuteCommand(wid int, request JobRequest) ([]byte, int, []byte) {
+func ExecuteCommand(wid int, request JobRequest) ([]byte, int, []byte, []byte) {
 	var outb, errb bytes.Buffer
 
 	wid_s := strconv.Itoa(wid)
 	jr_cmd := os.Getenv("JOBRUNNER_CMD")
-	slog.Info("worker", "JOBRUNNE_CMD", jr_cmd)
+	slog.Info("worker", "JOBRUNNER_CMD", jr_cmd)
 
 	slog.Info("ExecuteCommand", "workerId", wid, "command", jr_cmd)
 
     //create input file
 	fnprefix := fmt.Sprintf("jobdata_w_%s_id_%s_",wid_s,request.Id)
-	f, err := os.CreateTemp("", fnprefix)
+
+	fReq, err := os.CreateTemp("", fnprefix+"req_")
 	if err != nil {
 		slog.Error("ExecuteCommand: failed to create temp file", "error", err)
-		return []byte{}, -1, []byte(err.Error())
+		return []byte{}, -1, []byte(err.Error()), []byte{}
 	}
-	slog.Info("ExecuteCommand, created temp file", "worker", wid_s, "filename", f.Name(), "request.Id", request.Id)
-	defer os.Remove(f.Name()) // clean up
 
-	err = os.WriteFile(f.Name(), request.Data,  0666)
+	fRes, err := os.CreateTemp("", fnprefix+"res_")
+	if err != nil {
+		slog.Error("ExecuteCommand: failed to create temp file", "error", err)
+		return []byte{}, -1, []byte(err.Error()), []byte{}
+	}
+	slog.Info("ExecuteCommand, created temp files", "worker", wid_s, 
+        "request_fn", fReq.Name(), "request.Id", request.Id, "response_fn",fRes.Name())
+
+	defer os.Remove(fReq.Name()) // clean up
+	defer os.Remove(fRes.Name()) // clean up
+
+	err = os.WriteFile(fReq.Name(), request.Data,  0666)
 	if err != nil {
 		slog.Error("ExecuteCommand: failed to write temp file", "error", err)
-		return []byte{}, -1, []byte(err.Error())
+		return []byte{}, -1, []byte(err.Error()), []byte{}
 	}
 
 	//prepare cmd
 	cmd := exec.Command(jr_cmd)
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "JOBRUNNER_WORKER_ID="+strconv.Itoa(wid))
-	cmd.Env = append(cmd.Env, "JOBRUNNER_REQUEST_DATA_FN="+f.Name())
+	cmd.Env = append(cmd.Env, "JOBRUNNER_REQUEST_DATA_FN="+fReq.Name())
+	cmd.Env = append(cmd.Env, "JOBRUNNER_RESPONSE_DATA_FN="+fRes.Name())
 	cmd.Env = append(cmd.Env, "JOBRUNNER_REQUEST_ID="+request.Id)
 	cmd.Stdout = &outb
 	cmd.Stderr = &errb
@@ -140,27 +152,29 @@ func ExecuteCommand(wid int, request JobRequest) ([]byte, int, []byte) {
 	//slog.Info("out:", outb.String(), "err:", errb.String())
 	exitStatus := exitCode(err)
 
-	data := outb.Bytes()
-	cmdErr := errb.Bytes()
+	output_txt := outb.Bytes()
+	error_txt := errb.Bytes()
+    data, err := os.ReadFile(fRes.Name())
+
 
 	Infof("ExecuteCommand %v: work done, data length:%d\n", wid, len(data))
 
-	return data, exitStatus, cmdErr
+	return data, exitStatus, output_txt, error_txt
 }
 
 func worker(wid int, jobs chan JobPayload, m metrics) {
 	for {
 		jpl := <-jobs
-		slog.Info("worker: received job", "JobPayload", jpl)
+		slog.Info("worker: received job", "JobPayload.Request.Id", jpl.Request.Id)
 		atomic.AddUint64(&TotalJobs, 1)
 
 		start := time.Now()
-		result_data, result_status, result_message := ExecuteCommand(wid, jpl.Request)
+		result_data, result_status, output_txt, error_txt := ExecuteCommand(wid, jpl.Request)
 		elapsed := time.Since(start)
 		m.JobDuration.WithLabelValues(strconv.Itoa(wid)).Observe(float64(elapsed))
 		m.TotalJobs.WithLabelValues(strconv.Itoa(wid)).Inc()
 
-		jres := JobResult{Data: result_data, ExitStatus: result_status, Message: result_message, ElapsedSec: elapsed.Seconds(), Wid: wid}
+		jres := JobResult{Data: result_data, ExitStatus: result_status, Output: output_txt, Error: error_txt, ElapsedSec: elapsed.Seconds(), Wid: wid}
 
 		slog.Info("worker returning data to Jobready channel.", "wid", wid, "result_length", len(result_data))
 		jpl.JobReady <- jres // return result to payload handler
@@ -187,7 +201,7 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 		}
 
 		//payload is valid even if json keys were missing
-		log.Println("payloadHandler: a valid json POST request received:", jobreq)
+		log.Println("payloadHandler: a valid json POST request received")
 
 		// some json validation
 		if len(jobreq.Id) == 0 || len(jobreq.Data) == 0 {
@@ -246,6 +260,18 @@ func statusHandler(jobs chan JobPayload) http.HandlerFunc {
 	}
 }
 
+func EnvConf(env_varname string, default_value string) string {
+	env_value, isset := os.LookupEnv(env_varname)
+	if isset {
+		Infof("EnvConf: using  %s=%s env variable.", env_varname, env_value)
+        return env_value
+	} else {
+		Infof("EnvConf: %s not set, using default (%s).", env_varname, default_value)
+        return default_value
+    }
+}
+
+
 func main() {
 
 	//prometheus registry
@@ -256,11 +282,11 @@ func main() {
 	//jobs channel to send jobs requests from http handlers to workers
 	jobs := make(chan JobPayload, JobQueueCap)
 
-	jnw, err := strconv.Atoi(os.Getenv("JOBRUNNER_NUM_WORKERS"))
-	if err == nil {
-		NumWorkers = jnw
-		slog.Info("main: setting NumWorkers from JOBRUNNER_NUM_WORKERS env variable.", "NumWorkers", NumWorkers)
-	}
+
+    NumWorkers,_ = strconv.Atoi(EnvConf("JOBRUNNER_NUM_WORKERS", strconv.Itoa(NumWorkers)))
+    HttpListenPort = EnvConf("JOBRUNNER_HTTP_LISTEN_PORT", HttpListenPort)
+    HttpListenAddress = EnvConf("JOBRUNNER_HTTP_LISTEN_ADDRESS", HttpListenAddress)
+
 
 	//validate JOBRUNNER_CMD
 	jc := os.Getenv("JOBRUNNER_CMD")
@@ -285,7 +311,7 @@ func main() {
 		http.HandleFunc("/status", statusHandler(jobs))
 		http.Handle("/metrics", promhttp.HandlerFor(preg, promhttp.HandlerOpts{Registry: preg}))
 
-		err := http.ListenAndServe(HttpListenAddress+":"+strconv.Itoa(HttpListenPort), nil)
+		err := http.ListenAndServe(HttpListenAddress+":"+HttpListenPort, nil)
 		if err != nil {
 			slog.Info("Starting listening for payload messages.", "port", HttpListenPort)
 		} else {

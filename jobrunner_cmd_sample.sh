@@ -11,4 +11,5 @@ echo "here"
 cp "${JOBRUNNER_REQUEST_DATA_FN}" tmp/
 echo lala 1>&2
 /bin/sleep 3
-ls -l tmp/jobdata*
+echo "this is the output"
+ls -l tmp/jobdata* > $JOBRUNNER_RESPONSE_DATA_FN
