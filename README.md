@@ -24,7 +24,10 @@ If number of jobs waiting in queue > JOBRUNNER_NUM_WORKERS * 10, the service ret
 
 ## Compilation
 
-go build
+Type ```make``` to build for your platform, binaries will be created in bin/ directory. For cross-compiling:
+
+* make linux
+* make win
 
 ## Sending a request
 
