@@ -1,6 +1,6 @@
 #!/bin/bash
 
-server=80.209.234.240
+server="$1" 
 jp=job_payload.json
 
 e=$(date +%s)

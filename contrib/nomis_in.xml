@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ENR_IN>
   <EPA_NR_PROJECT rid="#1">
-    <id>102433/2024</id>
+    <id>103943/2023</id>
     <blg_use>7</blg_use>
     <blg_part>0</blg_part>
     <building_num/>
     <blg_kaek/>
-    <blg_owner>ΚΡΙΝΑΣ ΑΝΩΝΥΜΗ ΤΕΧΝΙΚΗ ΤΟΥΡΙΣΤΙΚΗ ΞΕΝΟΔOXΕΙΑΚΗ ΕΤΑΙΡΕΙΑ ΚΡΙΝΑΣ ΑΝΩΝΥΜΗ ΤΕΧΝΙΚΗ ΤΟΥΡΙΣΤΙΚΗ ΞΕΝΟΔOXΕΙΑΚΗ ΕΤΑ</blg_owner>
+    <blg_owner>ΞΕΝΟΔOXΕΙΑΚΗ</blg_owner>
     <blg_ownership>1</blg_ownership>
-    <blg_address>ΛΕΙΒΑΔΙ ,ΣΕΡΙΦΟΣ</blg_address>
+    <blg_address>ΛΕΙ</blg_address>
     <blg_resp>0</blg_resp>
-    <blg_resp_name>ΚΡΙΝΑΣ ΑΝΔΡΕΑΣ</blg_resp_name>
-    <blg_resp_phone>6936848269</blg_resp_phone>
+    <blg_resp_name>ΑΝ</blg_resp_name>
+    <blg_resp_phone>1234</blg_resp_phone>
     <blg_resp_mail/>
     <blg_zone>0</blg_zone>
     <blg_height>0</blg_height>

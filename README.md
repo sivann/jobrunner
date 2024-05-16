@@ -50,7 +50,8 @@ curl   -iL --post302 --post301  -X POST  -H "Content-Type: application/json"  lo
   "worker_id": 1,
   "elapsed_sec": 3.146105833,
   "exit_status": 0,
-  "message": "bGFsYQo="
+  "error": "bGFsYQo=",
+  "output": "bGFsYQo="
 }
 ```
 
