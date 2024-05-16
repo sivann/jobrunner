@@ -5,13 +5,13 @@ GOARCH:=$(shell go env GOARCH)
 BIN=bin/
 
 build: 
-	go build -o ${BIN}/jobrunner-${GOOS}  cmd/jobrunner/jobrunner.go
-	go build -o ${BIN}/waitforfile-${GOOS} cmd/waitforfile/waitforfile.go 
+	go build -o ${BIN}/jobrunner${SFX}  cmd/jobrunner/jobrunner.go
+	go build -o ${BIN}/waitforfile${SFX} cmd/waitforfile/waitforfile.go 
 
 linux:
-	 $(MAKE) GOARCH=amd64 GOOS=linux build
+	 $(MAKE) GOARCH=amd64 GOOS=linux SFX="-linux" build
 win:
-	 $(MAKE) GOARCH=amd64 GOOS=windows build 
+	 $(MAKE) GOARCH=amd64 GOOS=windows SFX=".exe" build 
 
 clean:
 	go clean

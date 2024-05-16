@@ -149,11 +149,11 @@ func ExecuteCommand(wid int, request JobRequest) ([]byte, int, []byte, []byte) {
 	}
 
 
-	//slog.Info("out:", outb.String(), "err:", errb.String())
 	exitStatus := exitCode(err)
 
 	output_txt := outb.Bytes()
 	error_txt := errb.Bytes()
+	Infof("out:[%s]\nerror:[%s]\n", output_txt, error_txt)
     data, err := os.ReadFile(fRes.Name())
 
 
