@@ -23,7 +23,7 @@ func watchFolder(folderPath, targetFilename string, timeOut time.Duration) {
 			}
 			for _, file := range files {
 				if file.Name() == targetFilename {
-					fmt.Fprintf(os.Stderr,"Found %s at %s after %.2fsec.\n", targetFilename, folderPath, time.Since(startTime).Seconds())
+					fmt.Fprintf(os.Stderr,"Found %s at %s after (sec): %.2f\n", targetFilename, folderPath, time.Since(startTime).Seconds())
                     os.Exit(0)
 				}
 			}
