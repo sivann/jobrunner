@@ -6,6 +6,7 @@ Start a limited pool of workers, which accept jobs over HTTP, execute a command,
 
 * JOBRUNNER_NUM_WORKERS: number of workers to start. Default=3
 * JOBRUNNER_CMD: command to execute by worker
+* JOBRUNNER_PASSWORD: password for the request
 
 ## Environment available to the executed command:
 
@@ -32,8 +33,11 @@ Type ```make``` to build for your platform, binaries will be created in bin/ dir
 ## Sending a request
 
 ```
-curl   -iL --post302 --post301  -X POST  -H "Content-Type: application/json"  localhost:8080/payload \
-  --data '{"data":"a29rbzEyMzQK", "id":"1235"}'
+JRP=<same as in $JOBRUNNER_PASSWORD>
+
+curl   -iL --post302 --post301  -X POST \
+   -H "Content-Type: application/json" -H "X-JR-PASSWORD: ${JRP}" \
+   localhost:8080/payload --data '{"data":"a29rbzEyMzQK", "id":"1235"}'
 ```
 
 **Where**:
@@ -59,3 +63,19 @@ curl   -iL --post302 --post301  -X POST  -H "Content-Type: application/json"  lo
 * worker_id: worker that processed the request
 * exit_status: $JOBRUNNER_CMD exit status
 * message: error message by worker or $JOBRUNNER_CMD
+
+## Example
+
+Start the server, return output of "date" command:
+``` 
+JOBRUNNER_HTTP_LISTEN_PORT=8181 JOBRUNNER_CMD=/bin/date  bin/jobrunner
+```
+
+Query the server:
+
+```
+curl   -sL --post302 --post301  -X POST  -H "Content-Type: application/json" --data '{"data":"a29rbzEyMzQK", "id":"1235"}' localhost:8181/payload |jq -r .output|base64 -d
+
+Fri 24 May 2024 13:59:07 EEST
+```
+
