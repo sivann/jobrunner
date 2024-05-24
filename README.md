@@ -79,3 +79,5 @@ curl   -sL --post302 --post301  -X POST  -H "Content-Type: application/json" --d
 Fri 24 May 2024 13:59:07 EEST
 ```
 
+The data parameter (a29rbzEyMzQK) which is the command was just a random string base64 encoded in this case as date would not need input.
+
