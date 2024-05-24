@@ -1,0 +1,2 @@
+This is input to WinSW.exe which will install start_jobrunner.bat as a service.
+Download WinSW.exe, rename to jobrunnersvc.exe and runjobrunnersvc install. This will install start_jobrunner.bat in the ../bin directory as a service.

@@ -1,0 +1,15 @@
+<service>
+  <id>jobrunner</id>
+  <name>Jobrunner</name>
+  <description>This service runs Jobrunner.</description>
+  <executable>%BASE%\..\bin\start_jobrunner.bat</executable>
+  <arguments></arguments>
+  <onfailure action="restart" delay="10 sec"/>
+  <resetfailure>1 hour</resetfailure>
+  <delayedAutoStart>true</delayedAutoStart>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+  <logpath>%BASE%\log</logpath>
+</service>

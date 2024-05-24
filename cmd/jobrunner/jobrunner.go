@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -56,6 +57,7 @@ var (
 	HttpListenAddress = "127.0.0.1"
 	HttpListenPort    = "8080"
 	TotalJobs         = uint64(0)
+    JrPassword        = ""
 )
 
 
@@ -200,16 +202,33 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 			return
 		}
 
+        request_jrpass := r.Header.Get("X-JR-PASSWORD")
+        if strings.Trim(request_jrpass,"\r\n") != strings.Trim(JrPassword, "\r\n") {
+			log.Println("Invalid password supplied in J-JR-PASSWORD header")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("Invalid password supplied in J-JR-PASSWORD header\n"))
+			return
+        }
+
 		//payload is valid even if json keys were missing
 		log.Println("payloadHandler: a valid json POST request received")
 
 		// some json validation
-		if len(jobreq.Id) == 0 || len(jobreq.Data) == 0 {
-			log.Println("Json keys missing")
+		if len(jobreq.Id) == 0 {
+			log.Println("Json key 'id' missing or empty")
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("Json keys missing\n"))
+			w.Write([]byte("Json key 'id' missing or empty\n"))
 			return
 		}
+
+
+		if len(jobreq.Data) == 0 {
+			log.Println("Json key 'data'  missing or empty")
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Json key 'data' missing or empty\n"))
+			return
+		}
+
 		jobid, err := strconv.Atoi(jobreq.Id)
 		if err != nil {
 			slog.Error("payloadHandler: Job ID not numeric", "error", err)
@@ -286,6 +305,7 @@ func main() {
     NumWorkers,_ = strconv.Atoi(EnvConf("JOBRUNNER_NUM_WORKERS", strconv.Itoa(NumWorkers)))
     HttpListenPort = EnvConf("JOBRUNNER_HTTP_LISTEN_PORT", HttpListenPort)
     HttpListenAddress = EnvConf("JOBRUNNER_HTTP_LISTEN_ADDRESS", HttpListenAddress)
+    JrPassword = EnvConf("JOBRUNNER_PASSWORD", JrPassword)
 
 
 	//validate JOBRUNNER_CMD

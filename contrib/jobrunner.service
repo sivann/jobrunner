@@ -1,0 +1,15 @@
+[Unit]
+Description=Jobrunner
+After=network.target
+
+[Service]
+ExecStart=/home/sivann/www/kenak/octave-jobrunner/bin/octave-jobrunner.php
+Type=simple
+Restart=always
+RestartSec=10
+KillMode=mixed
+StartLimitInterval=0
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
