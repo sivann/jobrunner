@@ -37,7 +37,8 @@ JRP=<same as in $JOBRUNNER_PASSWORD>
 
 curl   -iL --post302 --post301  -X POST \
    -H "Content-Type: application/json" -H "X-JR-PASSWORD: ${JRP}" \
-   localhost:8080/payload --data '{"data":"a29rbzEyMzQK", "id":"1235"}'
+   --data '{"data":"a29rbzEyMzQK", "id":"1235"}' \
+   localhost:8080/payload
 ```
 
 **Where**:
@@ -74,7 +75,9 @@ JOBRUNNER_HTTP_LISTEN_PORT=8181 JOBRUNNER_CMD=/bin/date  bin/jobrunner
 Query the server:
 
 ```
-curl   -sL --post302 --post301  -X POST  -H "Content-Type: application/json" --data '{"data":"a29rbzEyMzQK", "id":"1235"}' localhost:8181/payload |jq -r .output|base64 -d
+curl -sL --post302 --post301  -X POST \
+  -H "Content-Type: application/json" --data '{"data":"a29rbzEyMzQK", "id":"1235"}' \
+  localhost:8181/payload | jq -r .output | base64 -d
 
 Fri 24 May 2024 13:59:07 EEST
 ```
