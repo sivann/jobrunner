@@ -204,9 +204,9 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
 
         request_jrpass := r.Header.Get("X-JR-PASSWORD")
         if strings.Trim(request_jrpass,"\r\n") != strings.Trim(JrPassword, "\r\n") {
-			log.Println("Invalid password supplied in J-JR-PASSWORD header")
+			log.Println("Invalid password supplied in X-JR-PASSWORD header")
 			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("Invalid password supplied in J-JR-PASSWORD header\n"))
+			w.Write([]byte("Invalid password supplied in X-JR-PASSWORD header\n"))
 			return
         }
 
