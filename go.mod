@@ -1,6 +1,6 @@
 module jobrunner
 
-go 1.22.2
+go 1.21.9
 
 require github.com/prometheus/client_golang v1.19.1
 
