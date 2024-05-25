@@ -172,8 +172,8 @@ func worker(wid int, jobs chan JobPayload, m metrics) {
 
 		start := time.Now()
 		result_data, result_status, output_txt, error_txt := ExecuteCommand(wid, jpl.Request)
-		elapsed := time.Since(start).Seconds()
-		m.JobDuration.WithLabelValues(strconv.Itoa(wid)).Observe(float64(elapsed))
+		elapsed := time.Since(start)
+		m.JobDuration.WithLabelValues(strconv.Itoa(wid)).Observe(float64(elapsed.Seconds()))
 		m.TotalJobs.WithLabelValues(strconv.Itoa(wid)).Inc()
 
 		jres := JobResult{Data: result_data, ExitStatus: result_status, Output: output_txt, Error: error_txt, ElapsedSec: elapsed.Seconds(), Wid: wid}
