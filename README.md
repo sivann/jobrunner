@@ -7,6 +7,8 @@ Start a limited pool of workers, which accept jobs over HTTP, execute a command,
 * JOBRUNNER_NUM_WORKERS: number of workers to start. Default=3
 * JOBRUNNER_CMD: command to execute by worker
 * JOBRUNNER_PASSWORD: password for the request
+* JOBRUNNER_HTTP_LISTEN_ADDRESS: bind to this address
+* JOBRUNNER_HTTP_LISTEN_PORT: and port
 
 ## Environment available to the executed command:
 
