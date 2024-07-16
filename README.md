@@ -1,6 +1,6 @@
 # jobrunner
 
-Start a limited pool of workers, which accept jobs over HTTP, execute a command, and return the result synchronously on the same HTTP request.
+Start a limited pool of workers, which accept jobs over HTTP, execute a command, and return the result **synchronously** on the same HTTP request.
 
 ## Server Environment:
 
