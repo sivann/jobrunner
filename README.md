@@ -1,8 +1,13 @@
 # jobrunner
 
-Start a limited pool of workers, which accept jobs over HTTP, execute a command, and return the result **synchronously** on the same HTTP request.
+Start a limited pool of workers, which accept jobs over HTTP, execute a command, and return the result **synchronously** on the same HTTP request. Supports linux, windows, macos. Jobrunner is being used in production with no issues.
 
-## Server Environment:
+## Use cases
+
+Easily convert a legacy CLI application to a multi-instance web service where containers are not an option (e.g. for legacy .NET 2 apps).
+
+
+## Server Environment
 
 * JOBRUNNER_NUM_WORKERS: number of workers to start. Default=3
 * JOBRUNNER_CMD: command to execute by worker
@@ -10,7 +15,7 @@ Start a limited pool of workers, which accept jobs over HTTP, execute a command,
 * JOBRUNNER_HTTP_LISTEN_ADDRESS: bind to this address
 * JOBRUNNER_HTTP_LISTEN_PORT: and port
 
-## Environment available to the executed command:
+## Environment available to the executed command
 
 * JOBRUNNER_CMD: the CMD itself
 * JOBRUNNER_WORKER_ID: worker ID (1, 2, 3, etc) that handled the request
