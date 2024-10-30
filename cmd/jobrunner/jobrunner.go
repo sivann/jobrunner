@@ -1,7 +1,4 @@
 /* sivann 2024 */
-/* known bugs:
- * if an additional job with the same id is received before the previous is finished, it will misbehave. job.id must be unique
- */
 
 package main
 
