@@ -32,7 +32,7 @@ func watchFolder(folderPath, targetFilename string, timeOut time.Duration) {
 			fmt.Fprintln(os.Stderr, "Timeout reached. Exiting.")
 			os.Exit(1) // Exit with non-zero status (timeout)
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 
