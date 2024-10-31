@@ -159,7 +159,7 @@ func ExecuteCommand(wid int, request JobRequest) ([]byte, int, []byte, []byte) {
     Infof("ExecuteCommand: stdout:[%s]\nstderr:[%s]\nexitStatus:[%d]", output_txt, error_txt, exitStatus)
     data, err := os.ReadFile(fRes.Name())
 
-    Infof("ExecuteCommand: work done, worker=%v data_length=%d res_file=%s\n", wid, len(data), fRes.Name())
+    Infof("ExecuteCommand: work done, worker=%v request data_length=%d, result data_length=%d res_file=%s\n", wid, len(request.Data), len(data), fRes.Name())
 
     return data, exitStatus, output_txt, error_txt
 }
@@ -250,12 +250,12 @@ func payloadHandler(jobs chan JobPayload) http.HandlerFunc {
         //data seems valid
         jp := JobPayload{Request: jobreq, JobReady: make(chan JobResult)}
 
-        Infof("payloadHandler: sending job %v to jobs channel\n", jobid)
+        Infof("payloadHandler: sending job [%v] with request.data length:%d to jobs channel, a worker will pick it up\n", jobid, len(jobreq.Data))
 
         //send to worker
         jobs <- jp
 
-        Infof("payloadHandler: waiting for result on JobReady[%v]\n", jobid)
+        Infof("payloadHandler: waiting worker result on JobReady[%v]\n", jobid)
 
         //wait for worker
         jr := <-jp.JobReady
